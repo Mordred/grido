@@ -45,6 +45,30 @@ class Date extends Text
      */
     protected function formatValue($value)
     {
-        return $value ? date($this->dateFormat, strtotime($value)) : NULL;
+        return $value instanceof \DateTime
+			? $value->format($this->dateFormat)
+			: ($value ? date($this->dateFormat, strtotime($value)) : NULL);
+    }
+
+    /**
+	 * Value can be also a DateTime object
+	 *
+     * @internal
+     * @param mixed $row
+     * @return void
+     */
+    public function render($row)
+    {
+        if ($this->customRender) {
+            return callback($this->customRender)->invokeArgs(array($row));
+        }
+
+		$value = $this->getValue($row);
+		if (!($value instanceof \DateTime))
+			$value = \Nette\Templating\Helpers::escapeHtml($this->getValue($row));
+
+		$value = $this->formatValue($value);
+        $value = $this->applyReplacement($value);
+        return $value;
     }
 }

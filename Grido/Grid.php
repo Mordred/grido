@@ -35,7 +35,7 @@ use Grido\Components\Columns\Column,
  * @property Paginator $paginator
  * @property string $primaryKey
  * @property string $filterRenderType
- * @property IDataSource $model
+ * @property Grido\DataSources\IDataSource $model
  */
 class Grid extends \Nette\Application\UI\Control
 {
@@ -84,7 +84,7 @@ class Grid extends \Nette\Application\UI\Control
     /** @var array */
     protected $defaultSort = array();
 
-    /** @var IDataSource */
+    /** @var Grido\DataSources\IDataSource */
     protected $model;
 
     /** @var int total count of items */
@@ -103,7 +103,7 @@ class Grid extends \Nette\Application\UI\Control
     protected $hasFilters, $hasActions, $hasOperations, $hasExporting;
 
     /**
-     * Sets a model that implements the interface Grido\IDataSource
+     * Sets a model that implements the interface Grido\DataSources\IDataSource
      * or data-source object DibiFluent, Nette\Database\Table\Selection
      * @param mixed $model
      * @return Grid
@@ -116,8 +116,8 @@ class Grid extends \Nette\Application\UI\Control
             $model = new NetteDatabase($model);
         }
 
-        if (!$model instanceof IDataSource) {
-            throw new \InvalidArgumentException('Filter must be implemented Grido\IDataSource.');
+        if (!$model instanceof DataSources\IDataSource) {
+            throw new \InvalidArgumentException('Filter must be implemented Grido\DataSources\IDataSource.');
         }
 
         $this->model = $model;
@@ -364,7 +364,7 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function getOperations($need = TRUE)
     {
-        return $this->getComponent(Operation::ID, $need);
+        return $this->getComponent(Components\Operation::ID, $need);
     }
 
     /**
@@ -582,22 +582,22 @@ class Grid extends \Nette\Application\UI\Control
             $form->setValues(array(Filter::ID => $this->defaultFilter), TRUE);
 
         //operations handling
-        } elseif ($this->hasOperations() && $form[self::BUTTONS][Operation::ID]->isSubmittedBy()) {
+        } elseif ($this->hasOperations() && $form[self::BUTTONS][Components\Operation::ID]->isSubmittedBy()) {
             $this->addCheckers($this->getData());
 
-            $values = $form[Operation::ID]->values;
-            if (empty($values[Operation::ID])) {
+            $values = $form[Components\Operation::ID]->values;
+            if (empty($values[Components\Operation::ID])) {
                 $this->reload();
             }
             $ids = array();
-            $operation = $values[Operation::ID];
-            unset($values[Operation::ID]);
+            $operation = $values[Components\Operation::ID];
+            unset($values[Components\Operation::ID]);
             foreach ($values as $key => $val) {
                 if ($val) {
                     $ids[] = $key;
                 }
             }
-            $this[Operation::ID]->onSubmit($operation, $ids);
+            $this[Components\Operation::ID]->onSubmit($operation, $ids);
 
         //change items per page handling
         } elseif ($form[self::BUTTONS]['perPage']->isSubmittedBy()) {
@@ -649,7 +649,7 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function handleExport($type)
     {
-        if ($export = $this->getComponent(Export::ID, FALSE)) {
+        if ($export = $this->getComponent(Components\Export::ID, FALSE)) {
             $this->presenter->sendResponse($export);
         } else {
             trigger_error("Exporting is not allowed.", E_USER_NOTICE);
@@ -706,7 +706,7 @@ class Grid extends \Nette\Application\UI\Control
     public function hasOperations()
     {
         if ($this->hasOperations === NULL) {
-            $this->hasOperations = $this->getComponent(Operation::ID, FALSE);
+            $this->hasOperations = $this->getComponent(Components\Operation::ID, FALSE);
         }
 
         return $this->hasOperations;
@@ -719,7 +719,7 @@ class Grid extends \Nette\Application\UI\Control
     public function hasExporting()
     {
         if ($this->hasExporting === NULL) {
-            $this->hasExporting = $this->getComponent(Export::ID, FALSE);
+            $this->hasExporting = $this->getComponent(Components\Export::ID, FALSE);
         }
 
         return $this->hasExporting;
@@ -841,9 +841,9 @@ class Grid extends \Nette\Application\UI\Control
     protected function addCheckers($data)
     {
         if ($this->hasOperations()) {
-            $operation = $this['form'][Operation::ID];
+            $operation = $this['form'][Components\Operation::ID];
             if (count($operation->getComponents()) == 1) {
-                $pk = $this[Operation::ID]->getPrimaryKey();
+                $pk = $this[Components\Operation::ID]->getPrimaryKey();
                 foreach ($data as $item) {
                     $operation->addCheckbox($item[$pk]);
                 }
