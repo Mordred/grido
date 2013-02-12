@@ -11,9 +11,9 @@
 
 namespace Grido;
 
-use Grido\Columns\Column,
-    Grido\Filters\Filter,
-    Grido\Actions\Action;
+use Grido\Components\Columns\Column,
+    Grido\Components\Filters\Filter,
+    Grido\Components\Actions\Action;
 
 /**
  * Grido - DataGrid for Nette Framework.
@@ -408,12 +408,12 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * Returns translator.
-     * @return FileTranslator
+     * @return Grido\Translations\FileTranslator
      */
     public function getTranslator()
     {
         if ($this->translator === NULL) {
-            $this->setTranslator(new FileTranslator);
+            $this->setTranslator(new Translations\FileTranslator);
         }
 
         return $this->translator;
@@ -863,7 +863,7 @@ class Grid extends \Nette\Application\UI\Control
     {
         $column = new $type($this, $name, $label);
         if (!$column instanceof Column) {
-            throw new \InvalidArgumentException('Column must be inherited from Grido\Columns\Column.');
+            throw new \InvalidArgumentException('Column must be inherited from Grido\Components\Columns\Column.');
         }
         return $column;
     }
@@ -879,7 +879,7 @@ class Grid extends \Nette\Application\UI\Control
     {
         $filter = new $type($this, $name, $label, $optional);
         if (!$filter instanceof Filter) {
-            throw new \InvalidArgumentException('Filter must be inherited from Grido\Filters\Filter.');
+            throw new \InvalidArgumentException('Filter must be inherited from Grido\Components\Filters\Filter.');
         }
         return $filter;
     }
@@ -896,7 +896,7 @@ class Grid extends \Nette\Application\UI\Control
     {
         $action = new $type($this, $name, $label, $destination, $args);
         if (!$action instanceof Action) {
-            throw new \InvalidArgumentException('Action must be inherited from Grido\Actions\Action.');
+            throw new \InvalidArgumentException('Action must be inherited from Grido\Components\Actions\Action.');
         }
         return $action;
     }

@@ -9,7 +9,7 @@
  * the file license.md that was distributed with this source code.
  */
 
-namespace Grido\Actions;
+namespace Grido\Components\Actions;
 
 /**
  * Action on one row.
@@ -22,11 +22,11 @@ namespace Grido\Actions;
  * @property-write array $customRender
  * @property string $primaryKey
  */
-abstract class Action extends \Grido\Base
+abstract class Action extends \Grido\Components\Base
 {
     const ID = 'actions';
 
-    const TYPE_HREF = 'Grido\Actions\Href';
+    const TYPE_HREF = 'Grido\Components\Actions\Href';
 
     /** @var callback for custom rendering */
     protected $customRender;

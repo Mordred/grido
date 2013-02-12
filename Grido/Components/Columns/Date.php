@@ -9,7 +9,7 @@
  * the file license.md that was distributed with this source code.
  */
 
-namespace Grido\Columns;
+namespace Grido\Components\Columns;
 
 /**
  * Text column.
@@ -31,7 +31,7 @@ class Date extends Text
 
     /**
      * @param string $format
-     * @return \Grido\Columns\Date
+     * @return \Grido\Components\Columns\Date
      */
     public function setDateFormat($format)
     {
