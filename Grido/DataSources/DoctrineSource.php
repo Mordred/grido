@@ -102,7 +102,7 @@ class DoctrineSource extends \Nette\Object implements IDataSource {
     public function filter(array $condition) {
 		$condition = $this->formatFilterCondition($condition);
 		$this->qb->andWhere($condition[0]);
-		if ($condition[1])
+		if (isset($condition[1]) && isset($condition[2]))
 			$this->qb->setParameter($condition[2], $condition[1]);
     }
 
