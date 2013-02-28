@@ -43,6 +43,9 @@ abstract class Action extends \Grido\Components\Base
     /** @var string - name of primary key f.e.: link->('Article:edit', array($primaryKey => 1)) */
     protected $primaryKey;
 
+    /** @var callback for disabling */
+    protected $disable;
+
     /**
      * @param \Grido\Grid $grid
      * @param string $name
@@ -90,6 +93,19 @@ abstract class Action extends \Grido\Components\Base
     public function setElementPrototype(\Nette\Utils\Html $elementPrototype)
     {
         $this->elementPrototype = $elementPrototype;
+        return $this;
+    }
+
+    /**
+     * Sets callback for disable.
+     * Callback should return TRUE if the action is not allowed for current item.
+     *
+     * @param callback
+     * @return Action
+     */
+    public function setDisable($callback)
+    {
+        $this->disable = $callback;
         return $this;
     }
 
