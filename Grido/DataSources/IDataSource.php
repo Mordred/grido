@@ -16,13 +16,20 @@ namespace Grido\DataSources;
  *
  * @package     Grido
  * @subpackage  DataSources
- * @author      Petr Bugyík, petr@bugyik.cz
- *
- * @property-read int $count
- * @property-read array $data
+ * @author      Petr Bugyík
  */
 interface IDataSource
 {
+    /**
+     * @return array
+     */
+    function getData();
+
+    /**
+     * @return int
+     */
+    function getCount();
+
     /**
      * @param array $condition
      * @return void
@@ -43,12 +50,8 @@ interface IDataSource
     function sort(array $sorting);
 
     /**
-     * @return array
+     * @see \Grido\DataSources\Base::call()
+     * @param string $method
      */
-    function getData();
-
-    /**
-     * @return int
-     */
-    function getCount();
+    function call($method);
 }

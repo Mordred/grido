@@ -15,11 +15,12 @@ namespace Grido\Components\Actions;
  * Action on one row.
  *
  * @package     Grido
- * @subpackage  Actions
+ * @subpackage  Components\Actions
  * @author      Petr Bugyík
  *
  * @property-write \Nette\Utils\Html $elementPrototype
  * @property-write array $customRender
+ * @property-write array $disable
  * @property string $primaryKey
  */
 abstract class Action extends \Grido\Components\Base
@@ -30,6 +31,9 @@ abstract class Action extends \Grido\Components\Base
 
     /** @var callback for custom rendering */
     protected $customRender;
+
+    /** @var callback for disabling */
+    protected $disable;
 
     /** @var \Nette\Utils\Html <a> html tag */
     protected $elementPrototype;
@@ -42,9 +46,6 @@ abstract class Action extends \Grido\Components\Base
 
     /** @var string - name of primary key f.e.: link->('Article:edit', array($primaryKey => 1)) */
     protected $primaryKey;
-
-    /** @var callback for disabling */
-    protected $disable;
 
     /**
      * @param \Grido\Grid $grid
@@ -99,7 +100,6 @@ abstract class Action extends \Grido\Components\Base
     /**
      * Sets callback for disable.
      * Callback should return TRUE if the action is not allowed for current item.
-     *
      * @param callback
      * @return Action
      */

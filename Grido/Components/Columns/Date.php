@@ -15,7 +15,7 @@ namespace Grido\Components\Columns;
  * Text column.
  *
  * @package     Grido
- * @subpackage  Columns
+ * @subpackage  Components\Columns
  * @author      Petr Bugyík
  *
  * @property-write string $dateFormat
@@ -34,7 +34,7 @@ class Date extends Text
 
     /**
      * @param string $format
-     * @return \Grido\Components\Columns\Date
+     * @return Date
      */
     public function setDateFormat($format)
     {
@@ -85,5 +85,13 @@ class Date extends Text
         $value = $this->formatValue($value);
         $value = $this->applyReplacement($value);
         return $value;
+    }
+
+    public function renderExport($row)
+    {
+        $value = $this->getValue($row);
+        return $value instanceof \DateTime
+            ? $value->format($this->dateFormat)
+            : $this->formatValue($value);
     }
 }

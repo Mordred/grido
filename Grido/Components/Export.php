@@ -15,50 +15,29 @@ namespace Grido\Components;
  * Exporting data to CSV.
  *
  * @package     Grido
- * @subpackage  Export
+ * @subpackage  Components
  * @author      Petr Bugyík
  */
 class Export extends Base implements \Nette\Application\IResponse
 {
     const ID = 'export';
 
-    /** @var Grid */
+    /** @var Grido\Grid */
     protected $grid;
 
     /** @var string */
     protected $name;
 
     /**
-     * @param Grid $grid
+     * @param \Grido\Grid $grid
      * @param string $name
      */
-    public function __construct(Grid $grid, $name)
+    public function __construct(\Grido\Grid $grid, $name)
     {
         $this->grid = $grid;
         $this->name = $name;
 
         $grid->addComponent($this, self::ID);
-    }
-
-    /**********************************************************************************************/
-
-    protected function getResponse()
-    {
-        $data = $this->grid->getData(FALSE);
-        $columns = $this->grid[\Grido\Components\Columns\Column::ID]->getComponents();
-        $source = $this->generateCsv($data, $columns);
-
-        $charset = 'UTF-16LE';
-        $source = mb_convert_encoding($source, $charset, 'UTF-8');
-        $source = "\xFF\xFE" . $source; //add BOM
-
-        $response = $this->grid->presenter->context->getByType('Nette\Http\IResponse', 'UTF-8');
-        $response->setHeader('Content-Encoding', $charset);
-        $response->setHeader('Content-Length', strlen($source));
-        $response->setHeader('Content-Type', "text/csv; charset=$charset");
-        $response->setHeader('Content-Disposition', "attachment; filename=\"{$this->name}.csv\"");
-
-        return $source;
     }
 
     protected function generateCsv($data, $columns)
@@ -90,13 +69,27 @@ class Export extends Base implements \Nette\Application\IResponse
         return $source;
     }
 
+    /*************************** interface \Nette\Application\IResponse ***************************/
+
     /**
      * Sends response to output.
      * @return void
      */
     public function send(\Nette\Http\IRequest $httpRequest, \Nette\Http\IResponse $httpResponse)
     {
-        print $this->getResponse();
-        $this->grid->presenter->terminate();
+        $data = $this->grid->getData(FALSE);
+        $columns = $this->grid[\Grido\Components\Columns\Column::ID]->getComponents();
+        $source = $this->generateCsv($data, $columns);
+
+        $charset = 'UTF-16LE';
+        $source = mb_convert_encoding($source, $charset, 'UTF-8');
+        $source = "\xFF\xFE" . $source; //add BOM
+
+        $httpResponse->setHeader('Content-Encoding', $charset);
+        $httpResponse->setHeader('Content-Length', strlen($source));
+        $httpResponse->setHeader('Content-Type', "text/csv; charset=$charset");
+        $httpResponse->setHeader('Content-Disposition', "attachment; filename=\"{$this->name}.csv\"");
+
+        print $source;
     }
 }

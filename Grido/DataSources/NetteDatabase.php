@@ -20,8 +20,9 @@ namespace Grido\DataSources;
  *
  * @property-read int $count
  * @property-read array $data
+ * @property-read \Nette\Database\Table\Selection $selection
  */
-class NetteDatabase extends \Nette\Object implements IDataSource
+class NetteDatabase extends Base implements IDataSource
 {
     /** @var \Nette\Database\Table\Selection */
     protected $selection;
@@ -35,48 +36,17 @@ class NetteDatabase extends \Nette\Object implements IDataSource
     }
 
     /**
-     * @return int
+     * @return \Nette\Database\Table\Selection
      */
-    public function getCount()
-    {
-        return $this->selection->count('*');
-    }
-
-    /**
-     * @return array
-     */
-    public function getData()
+    public function getSelection()
     {
         return $this->selection;
     }
 
-    /**********************************************************************************************/
-
-    /**
-     * @param array $condition
-     */
-    public function filter(array $condition)
+    protected function removePlaceholders(array $condition)
     {
-        $this->selection->where($this->removePlaceholders($condition));
-    }
-
-    /**
-     * @param array $sorting
-     */
-    public function sort(array $sorting)
-    {
-        foreach ($sorting as $column => $sort) {
-            $this->selection->order("$column $sort");
-        }
-    }
-
-    /**
-     * @param int $offset
-     * @param int $limit
-     */
-    public function limit($offset, $limit)
-    {
-        $this->selection->limit($limit, $offset);
+        $condition[0] = trim(str_replace(array('%s', '%i', '%f'), '?', $condition[0]));
+        return array(str_replace(array('[', ']'), array('', ''), $condition[0]) => $condition[1]);
     }
 
     /**
@@ -94,9 +64,48 @@ class NetteDatabase extends \Nette\Object implements IDataSource
         return array_keys($selection->fetchPairs($column, $column));
     }
 
-    private function removePlaceholders(array $condition)
+    /*********************************** interface IDataSource ************************************/
+
+    /**
+     * @return array
+     */
+    public function getData()
     {
-        $condition[0] = trim(str_replace(array('%s', '%i', '%f'), '?', $condition[0]));
-        return array(str_replace(array('[', ']'), array('`', '`'), $condition[0]) => $condition[1]);
+        return $this->selection;
+    }
+
+    /**
+     * @return int
+     */
+    public function getCount()
+    {
+        return $this->selection->count('*');
+    }
+
+    /**
+     * @param array $condition
+     */
+    public function filter(array $condition)
+    {
+        $this->selection->where($this->removePlaceholders($condition));
+    }
+
+    /**
+     * @param int $offset
+     * @param int $limit
+     */
+    public function limit($offset, $limit)
+    {
+        $this->selection->limit($limit, $offset);
+    }
+
+    /**
+     * @param array $sorting
+     */
+    public function sort(array $sorting)
+    {
+        foreach ($sorting as $column => $sort) {
+            $this->selection->order("$column $sort");
+        }
     }
 }

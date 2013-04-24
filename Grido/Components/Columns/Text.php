@@ -15,7 +15,7 @@ namespace Grido\Components\Columns;
  * Text column.
  *
  * @package     Grido
- * @subpackage  Columns
+ * @subpackage  Components\Columns
  * @author      Petr Bugyík
  */
 class Text extends Column {}

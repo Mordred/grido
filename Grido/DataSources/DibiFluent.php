@@ -20,10 +20,13 @@ namespace Grido\DataSources;
  *
  * @property-read int $count
  * @property-read array $data
+ * @property-read \DibiFluent $fluent
+ * @property-read int $limit
+ * @property-read int $offset
  */
-class DibiFluent extends \Nette\Object implements IDataSource
+class DibiFluent extends Base implements IDataSource
 {
-    /** @var DibiFluent */
+    /** @var \DibiFluent */
     protected $fluent;
 
     /** @var int */
@@ -41,50 +44,27 @@ class DibiFluent extends \Nette\Object implements IDataSource
     }
 
     /**
+     * @return \DibiFluent
+     */
+    public function getFluent()
+    {
+        return $this->fluent;
+    }
+
+    /**
      * @return int
      */
-    public function getCount()
+    public function getLimit()
     {
-        $fluent = clone $this->fluent;
-        return $fluent->count();
+        return $this->limit;
     }
 
     /**
-     * @return array
+     * @return int
      */
-    public function getData()
+    public function getOffset()
     {
-        return $this->fluent->fetchAll($this->offset, $this->limit);
-    }
-
-    /**********************************************************************************************/
-
-    /**
-     * @param array $condition
-     */
-    public function filter(array $condition)
-    {
-        call_user_func_array(array($this->fluent, 'where'), $condition);
-    }
-
-    /**
-     * @param array $sorting
-     */
-    public function sort(array $sorting)
-    {
-        foreach ($sorting as $column => $sort) {
-            $this->fluent->orderBy($column, $sort);
-        }
-    }
-
-    /**
-     * @param int $offset
-     * @param int $limit
-     */
-    public function limit($offset, $limit)
-    {
-        $this->offset = $offset;
-        $this->limit = $limit;
+        return $this->offset;
     }
 
     /**
@@ -101,5 +81,52 @@ class DibiFluent extends \Nette\Object implements IDataSource
 
         $items = array_keys($fluent->fetchPairs($column, $column));
         return $items;
+    }
+
+    /*********************************** interface IDataSource ************************************/
+
+    /**
+     * @return array
+     */
+    public function getData()
+    {
+        return $this->fluent->fetchAll($this->offset, $this->limit);
+    }
+
+    /**
+     * @return int
+     */
+    public function getCount()
+    {
+        $fluent = clone $this->fluent;
+        return $fluent->count();
+    }
+
+    /**
+     * @param array $condition
+     */
+    public function filter(array $condition)
+    {
+        call_user_func_array(array($this->fluent, 'where'), $condition);
+    }
+
+    /**
+     * @param int $offset
+     * @param int $limit
+     */
+    public function limit($offset, $limit)
+    {
+        $this->offset = $offset;
+        $this->limit = $limit;
+    }
+
+    /**
+     * @param array $sorting
+     */
+    public function sort(array $sorting)
+    {
+        foreach ($sorting as $column => $sort) {
+            $this->fluent->orderBy($column, $sort);
+        }
     }
 }

@@ -13,7 +13,10 @@ namespace Grido;
 
 use Grido\Components\Columns\Column,
     Grido\Components\Filters\Filter,
-    Grido\Components\Actions\Action;
+    Grido\Components\Actions\Action,
+    Grido\Components\Operation,
+    Grido\Components\Export,
+    Grido\Components\Paginator;
 
 /**
  * Grido - DataGrid for Nette Framework.
@@ -22,7 +25,6 @@ use Grido\Components\Columns\Column,
  * @author      Petr Bugyík
  *
  * @property-read int $count
- * @property-read callback $perPageList
  * @property-read mixed $data
  * @property-read callback $rowCallback
  * @property-write bool $rememberState
@@ -35,7 +37,8 @@ use Grido\Components\Columns\Column,
  * @property Paginator $paginator
  * @property string $primaryKey
  * @property string $filterRenderType
- * @property Grido\DataSources\IDataSource $model
+ * @property DataSources\IDataSource $model
+ * @property PropertyAccessors\IPropertyAccessor $propertyAccessor
  */
 class Grid extends \Nette\Application\UI\Control
 {
@@ -84,7 +87,7 @@ class Grid extends \Nette\Application\UI\Control
     /** @var array */
     protected $defaultSort = array();
 
-    /** @var Grido\DataSources\IDataSource */
+    /** @var DataSources\IDataSource */
     protected $model;
 
     /** @var int total count of items */
@@ -96,31 +99,44 @@ class Grid extends \Nette\Application\UI\Control
     /** @var Paginator */
     protected $paginator;
 
-    /** @var ITranslator */
+    /** @var \Nette\Localization\ITranslator */
     protected $translator;
+
+    /** @var PropertyAccessors\IPropertyAccessor */
+    protected $propertyAccessor;
 
     /** @var bool cache */
     protected $hasFilters, $hasActions, $hasOperations, $hasExporting;
 
     /**
      * Sets a model that implements the interface Grido\DataSources\IDataSource
-     * or data-source object DibiFluent, Nette\Database\Table\Selection
+     * or data-source object DibiFluent, Nette\Database\Table\Selection.
      * @param mixed $model
+     * @throws \InvalidArgumentException
      * @return Grid
      */
     public function setModel($model)
     {
         if ($model instanceof \DibiFluent) {
-            $model = new DibiFluent($model);
+            $model = new DataSources\DibiFluent($model);
         } elseif ($model instanceof \Nette\Database\Table\Selection) {
-            $model = new NetteDatabase($model);
-        }
-
-        if (!$model instanceof DataSources\IDataSource) {
-            throw new \InvalidArgumentException('Filter must be implemented Grido\DataSources\IDataSource.');
+            $model = new DataSources\NetteDatabase($model);
+        } elseif (!$model instanceof DataSources\IDataSource) {
+            throw new \InvalidArgumentException('Model must be implemented \Grido\DataSources\IDataSource.');
         }
 
         $this->model = $model;
+        return $this;
+    }
+
+    /**
+     * Sets a property accesor that implements the interface Grido\PropertyAccessors\IPropertyAccessor
+     * @param PropertyAccessors\IPropertyAccessor $propertyAccessor
+     * @return Grid
+     */
+    public function setPropertyAccessor(PropertyAccessors\IPropertyAccessor $propertyAccessor)
+    {
+        $this->propertyAccessor = $propertyAccessor;
         return $this;
     }
 
@@ -162,8 +178,10 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function setDefaultSort(array $sort)
     {
+        static $replace = array('asc' => Column::ASC, 'desc' => Column::DESC);
+
         foreach ($sort as $column => $dir) {
-            $this->defaultSort[$column] = $dir;
+            $this->defaultSort[$column] = strtr(strtolower($dir), $replace);
         }
 
         return $this;
@@ -193,10 +211,10 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * Sets type of filter rendering.
-     * Defaults inner (Filter::RENDER_INNER) if column doesn't exist then outer filter (Filter::RENDER_OUTER).
+     * Defaults inner (Filter::RENDER_INNER) if column does not exist then outer filter (Filter::RENDER_OUTER).
      * @param string $type
+     * @throws \InvalidArgumentException
      * @return Grid
-     * @throws \Exception
      */
     public function setFilterRenderType($type)
     {
@@ -273,7 +291,7 @@ class Grid extends \Nette\Application\UI\Control
     public function getCount()
     {
         if ($this->count === NULL) {
-            $this->count = $this->model->count;
+            $this->count = $this->model->call('getCount');
         }
 
         return $this->count;
@@ -364,7 +382,7 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function getOperations($need = TRUE)
     {
-        return $this->getComponent(Components\Operation::ID, $need);
+        return $this->getComponent(Operation::ID, $need);
     }
 
     /**
@@ -380,6 +398,7 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * Returns fetched data.
+     * @throws \Exception
      * @return array
      */
     public function getData($applyPaging = TRUE)
@@ -396,7 +415,7 @@ class Grid extends \Nette\Application\UI\Control
                 $this->applyPaging();
             }
 
-            $this->data = $this->model->data;
+            $this->data = $this->model->call('getData');
 
             if ($this->onFetchData) {
                 $this->onFetchData($this);
@@ -408,7 +427,7 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * Returns translator.
-     * @return Grido\Translations\FileTranslator
+     * @return Translations\FileTranslator
      */
     public function getTranslator()
     {
@@ -425,7 +444,7 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function getRememberSession()
     {
-        return $this->presenter->getSession($this->name);
+        return $this->presenter->getSession($this->presenter->name . '\\' . ucfirst($this->name));
     }
 
     /**
@@ -438,8 +457,10 @@ class Grid extends \Nette\Application\UI\Control
             return $this->filterRenderType;
         }
 
-        if ($this->hasFilters() && $this->hasActions()) {
-            $this->filterRenderType = Filter::RENDER_INNER; //default
+        if ($this->hasFilters()) {
+            $this->filterRenderType = $this->hasActions()
+                ? Filter::RENDER_INNER
+                : Filter::RENDER_OUTER;
 
             $filters = $this[Filter::ID]->getComponents();
             foreach ($filters as $filter) {
@@ -460,6 +481,19 @@ class Grid extends \Nette\Application\UI\Control
     public function getModel()
     {
         return $this->model;
+    }
+
+    /**
+     * @internal
+     * @return PropertyAccessors\IPropertyAccessor
+     */
+    public function getPropertyAccessor()
+    {
+        if ($this->propertyAccessor === NULL) {
+            $this->propertyAccessor = new PropertyAccessors\ArrayObjectAccessor;
+        }
+
+        return $this->propertyAccessor;
     }
 
     /**
@@ -582,22 +616,22 @@ class Grid extends \Nette\Application\UI\Control
             $form->setValues(array(Filter::ID => $this->defaultFilter), TRUE);
 
         //operations handling
-        } elseif ($this->hasOperations() && $form[self::BUTTONS][Components\Operation::ID]->isSubmittedBy()) {
+        } elseif ($this->hasOperations() && $form[self::BUTTONS][Operation::ID]->isSubmittedBy()) {
             $this->addCheckers($this->getData());
 
-            $values = $form[Components\Operation::ID]->values;
-            if (empty($values[Components\Operation::ID])) {
+            $values = $form[Operation::ID]->values;
+            if (empty($values[Operation::ID])) {
                 $this->reload();
             }
             $ids = array();
-            $operation = $values[Components\Operation::ID];
-            unset($values[Components\Operation::ID]);
+            $operation = $values[Operation::ID];
+            unset($values[Operation::ID]);
             foreach ($values as $key => $val) {
                 if ($val) {
                     $ids[] = $key;
                 }
             }
-            $this[Components\Operation::ID]->onSubmit($operation, $ids);
+            $this[Operation::ID]->onSubmit($operation, $ids);
 
         //change items per page handling
         } elseif ($form[self::BUTTONS]['perPage']->isSubmittedBy()) {
@@ -633,7 +667,7 @@ class Grid extends \Nette\Application\UI\Control
 
         } elseif (method_exists($this->model, 'suggest')) {
             $conditions[] = $filter->makeFilter($query);
-            $items = $this->model->suggest(key($filter->getColumns()), $conditions);
+            $items = $this->model->call('suggest', key($filter->getColumns()), $conditions);
 
         } else {
             throw new \InvalidArgumentException('Set suggest callback or implement method in model.');
@@ -649,8 +683,9 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function handleExport($type)
     {
-        if ($export = $this->getComponent(Components\Export::ID, FALSE)) {
+        if ($export = $this->getComponent(Export::ID, FALSE)) {
             $this->presenter->sendResponse($export);
+            $this->presenter->terminate();
         } else {
             trigger_error("Exporting is not allowed.", E_USER_NOTICE);
         }
@@ -706,7 +741,7 @@ class Grid extends \Nette\Application\UI\Control
     public function hasOperations()
     {
         if ($this->hasOperations === NULL) {
-            $this->hasOperations = $this->getComponent(Components\Operation::ID, FALSE);
+            $this->hasOperations = $this->getComponent(Operation::ID, FALSE);
         }
 
         return $this->hasOperations;
@@ -719,7 +754,7 @@ class Grid extends \Nette\Application\UI\Control
     public function hasExporting()
     {
         if ($this->hasExporting === NULL) {
-            $this->hasExporting = $this->getComponent(Components\Export::ID, FALSE);
+            $this->hasExporting = $this->getComponent(Export::ID, FALSE);
         }
 
         return $this->hasExporting;
@@ -768,7 +803,7 @@ class Grid extends \Nette\Application\UI\Control
     {
         $conditions = $this->_applyFiltering($this->getActualFilter());
         foreach ($conditions as $condition) {
-            $this->model->filter($condition);
+            $this->model->call('filter', $condition);
         }
     }
 
@@ -821,7 +856,7 @@ class Grid extends \Nette\Application\UI\Control
         }
 
         if ($sort) {
-            $this->model->sort($sort);
+            $this->model->call('sort', $sort);
         }
     }
 
@@ -832,7 +867,7 @@ class Grid extends \Nette\Application\UI\Control
             ->setPage($this->page);
 
         $this['form']['count']->setValue($this->getPerPage());
-        $this->model->limit($paginator->getOffset(), $paginator->getLength());
+        $this->model->call('limit', $paginator->getOffset(), $paginator->getLength());
     }
 
     /**
@@ -841,11 +876,11 @@ class Grid extends \Nette\Application\UI\Control
     protected function addCheckers($data)
     {
         if ($this->hasOperations()) {
-            $operation = $this['form'][Components\Operation::ID];
+            $operation = $this['form'][Operation::ID];
             if (count($operation->getComponents()) == 1) {
-                $pk = $this[Components\Operation::ID]->getPrimaryKey();
+                $pk = $this[Operation::ID]->getPrimaryKey();
                 foreach ($data as $item) {
-                    $operation->addCheckbox($item[$pk]);
+                    $operation->addCheckbox($this->getPropertyAccessor()->getProperty($item, $pk));
                 }
             }
         }
@@ -857,13 +892,14 @@ class Grid extends \Nette\Application\UI\Control
      * @param string $name
      * @param string $label
      * @param string $type starting constants with Column::TYPE_
+     * @throws \InvalidArgumentException
      * @return Column
      */
     public function addColumn($name, $label, $type = Column::TYPE_TEXT)
     {
         $column = new $type($this, $name, $label);
         if (!$column instanceof Column) {
-            throw new \InvalidArgumentException('Column must be inherited from Grido\Components\Columns\Column.');
+            throw new \InvalidArgumentException('Column must be inherited from \Grido\Components\Columns\Column.');
         }
         return $column;
     }
@@ -873,13 +909,14 @@ class Grid extends \Nette\Application\UI\Control
      * @param string $label
      * @param string $type starting constants with Filter::TYPE_
      * @param mixed $optional if type is select, then this it items for select
+     * @throws \InvalidArgumentException
      * @return Filter
      */
     public function addFilter($name, $label, $type = Filter::TYPE_TEXT, $optional = NULL)
     {
         $filter = new $type($this, $name, $label, $optional);
         if (!$filter instanceof Filter) {
-            throw new \InvalidArgumentException('Filter must be inherited from Grido\Components\Filters\Filter.');
+            throw new \InvalidArgumentException('Filter must be inherited from \Grido\Components\Filters\Filter.');
         }
         return $filter;
     }
@@ -890,13 +927,14 @@ class Grid extends \Nette\Application\UI\Control
      * @param string $type starting constants with Action::TYPE_
      * @param string $destination - first param for method $presenter->link()
      * @param array $args - second param for method $presenter->link()
+     * @throws \InvalidArgumentException
      * @return Action
      */
     public function addAction($name, $label, $type = Action::TYPE_HREF, $destination = NULL, $args = array())
     {
         $action = new $type($this, $name, $label, $destination, $args);
         if (!$action instanceof Action) {
-            throw new \InvalidArgumentException('Action must be inherited from Grido\Components\Actions\Action.');
+            throw new \InvalidArgumentException('Action must be inherited from \Grido\Components\Actions\Action.');
         }
         return $action;
     }
@@ -905,13 +943,14 @@ class Grid extends \Nette\Application\UI\Control
      * @param array $operations
      * @param callback $onSubmit - callback after operation submit
      * @param string $type operation class
+     * @throws \InvalidArgumentException
      * @return Operation
      */
-    public function setOperations($operations, $onSubmit, $type = 'Grido\Operation')
+    public function setOperations($operations, $onSubmit, $type = '\Grido\Components\Operation')
     {
         $operation = new $type($this, $operations, $onSubmit);
-        if (!$operation instanceof Operation) {
-            throw new \InvalidArgumentException('Operation must be inherited from Grido\Operation.');
+        if (!$operation instanceof Components\Operation) {
+            throw new \InvalidArgumentException('Operation must be inherited from \Grido\Components\Operation.');
         }
         return $operation;
     }
@@ -919,14 +958,14 @@ class Grid extends \Nette\Application\UI\Control
     /**
      * @param string $name of exporting file
      * @param string $type export class
+     * @throws \InvalidArgumentException
      * @return Export
-     * @throws \Exception
      */
-    public function setExporting($name = NULL, $type = 'Grido\Export')
+    public function setExporting($name = NULL, $type = '\Grido\Components\Export')
     {
         $export = new $type($this, $name ? $name : ucfirst($this->name));
-        if (!$export instanceof Export) {
-            throw new \InvalidArgumentException('Export must be inherited from Grido\Export.');
+        if (!$export instanceof Components\Export) {
+            throw new \InvalidArgumentException('Export must be inherited from \Grido\Components\Export.');
         }
 
         return $export;
@@ -946,6 +985,7 @@ class Grid extends \Nette\Application\UI\Control
         $form->addSelect('count', 'Count', array_combine($this->perPageList, $this->perPageList))
             ->controlPrototype->attrs['title'] = $this->getTranslator()->translate('Items per page');
         $form->onSuccess[] = callback($this, 'handleForm');
+
         return $form;
     }
 }

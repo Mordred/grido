@@ -15,7 +15,7 @@ namespace Grido\Components\Columns;
  * Href column.
  *
  * @package     Grido
- * @subpackage  Columns
+ * @subpackage  Components\Columns
  * @author      Petr Bugyík
  */
 class Href extends Text

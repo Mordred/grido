@@ -15,11 +15,12 @@ namespace Grido\Components\Actions;
  * Href action.
  *
  * @package     Grido
- * @subpackage  Actions
+ * @subpackage  Components\Actions
  * @author      Petr Bugyík
  *
  * @property-read \Nette\Utils\Html $elementPrototype
  * @property-write array $customHref
+ * @property-write string|callback $confirm
  * @property string $icon
  */
 class Href extends Action
@@ -29,6 +30,9 @@ class Href extends Action
 
     /** @var string */
     protected $icon;
+
+    /** @var string|callback */
+    protected $confirm;
 
     /**
      * Sets callback for custom link creating.
@@ -54,12 +58,12 @@ class Href extends Action
 
     /**
      * Sets client side confirm.
-     * @param string $msg
+     * @param string|callback $confirm
      * @return Href
      */
-    public function setConfirm($msg)
+    public function setConfirm($confirm)
     {
-        $this->getElementPrototype()->attrs['data-grido-confirm'] = $this->translate($msg);
+        $this->confirm = $confirm;
         return $this;
     }
 
@@ -81,6 +85,7 @@ class Href extends Action
 
     /**
      * @param mixed $item
+     * @throws \InvalidArgumentException
      * @return void
      */
     public function render($item)
@@ -94,14 +99,14 @@ class Href extends Action
 
         if (!$item || ($this->disable && callback($this->disable)->invokeArgs(array($item)))) {
             return;
-        } elseif (empty($item->$pk)) {
+        } elseif (!$this->getGrid()->getPropertyAccessor()->hasProperty($item, $pk)) {
             throw new \InvalidArgumentException("Primary key '$pk' not found.");
         }
 
         if ($this->customHref) {
             $href = callback($this->customHref)->invokeArgs(array($item));
         } else {
-            $this->arguments[$pk] = $item->$pk;
+            $this->arguments[$pk] = $this->getGrid()->getPropertyAccessor()->getProperty($item, $pk);
             $href = $this->presenter->link($this->getDestination(), $this->arguments);
         }
 
@@ -111,6 +116,14 @@ class Href extends Action
         $el = $this->getElementPrototype()
             ->href($href)
             ->setText($text);
+
+        if ($this->confirm) {
+            $el->attrs['data-grido-confirm'] = $this->translate(
+                is_callable($this->confirm)
+                    ? callback($this->confirm)->invokeArgs(array($item))
+                    : $this->confirm
+            );
+        }
 
         if ($this->icon) {
             $el->insert(0,\Nette\Utils\Html::el('i')->setClass(array("icon-$this->icon")));

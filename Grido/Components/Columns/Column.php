@@ -17,7 +17,7 @@ use Grido\Components\Filters\Filter;
  * Column grid.
  *
  * @package     Grido
- * @subpackage  Columns
+ * @subpackage  Components\Columns
  * @author      Petr Bugyík
  *
  * @property-read string $sort
@@ -111,7 +111,7 @@ abstract class Column extends \Grido\Components\Base
     }
 
     /**
-     * @param string $column
+     * @param mixed $column
      * @return Column
      */
     public function setColumn($column)
@@ -121,15 +121,14 @@ abstract class Column extends \Grido\Components\Base
     }
 
     /**
-     * @param string $sorting
+     * @param string $dir
      * @return Column
      */
-    public function setDefaultSorting($sorting)
+    public function setDefaultSort($dir)
     {
-        $this->grid->setDefaultSorting(array($this->getName() => strtolower($sorting)));
+        $this->grid->setDefaultSort(array($this->name => $dir));
         return $this;
     }
-
 
     /**
      * @param callback $callback array|closure
@@ -192,7 +191,7 @@ abstract class Column extends \Grido\Components\Base
 
     /**
      * @internal
-     * @return string
+     * @return mixed
      */
     public function getColumn()
     {
@@ -235,7 +234,7 @@ abstract class Column extends \Grido\Components\Base
      */
     public function hasFilter()
     {
-        return $this->getForm()->getComponent(Filter::ID)->getComponent($this->name, FALSE);
+        return $this->grid->hasFilters() && $this->grid[Filter::ID]->getComponent($this->name, FALSE);
     }
 
     /**********************************************************************************************/
@@ -268,15 +267,26 @@ abstract class Column extends \Grido\Components\Base
         return strip_tags($this->applyReplacement($value));
     }
 
+    /**
+     * @param mixed $row
+     * @throws \InvalidArgumentException
+     * @return mixed
+     */
     protected function getValue($row)
     {
         $column = $this->getColumn();
-        return $row->$column;
+        if (is_string($column)) {
+            return $this->getGrid()->getPropertyAccessor()->getProperty($row, $column);
+        } elseif (is_callable($column)) {
+            return callback($column)->invokeArgs(array($row));
+        } else {
+            throw new \InvalidArgumentException('Column must be string or callback.');
+        }
     }
 
     protected function applyReplacement($value)
     {
-        return isset($this->replacements[$value])
+        return is_string($value) && isset($this->replacements[$value])
             ? str_replace(self::VALUE_IDENTIFIER, $value, $this->replacements[$value])
             : $value;
     }
