@@ -101,16 +101,6 @@ abstract class Column extends \Grido\Components\Base
     }
 
     /**
-     * @param string $type see filter's constants starting at TYPE_
-     * @param mixed $optional if type is select, then this it items for select
-     * @return Filter
-     */
-    public function setFilter($type = Filter::TYPE_TEXT, $optional = NULL)
-    {
-        return $this->grid->addFilter($this->name, $this->label, $type, $optional);
-    }
-
-    /**
      * @param mixed $column
      * @return Column
      */
@@ -151,6 +141,59 @@ abstract class Column extends \Grido\Components\Base
             return \Nette\Utils\Strings::truncate($string, $maxLen, $append);
         };
         return $this;
+    }
+
+    /******************************* Aliases for filters ******************************************/
+
+    /**
+     * @return \Grido\Components\Filters\Text
+     */
+    public function setFilterText()
+    {
+        return $this->grid->addFilterText($this->name, $this->label);
+    }
+
+    /**
+     * @return \Grido\Components\Filters\Date
+     */
+    public function setFilterDate()
+    {
+        return $this->grid->addFilterDate($this->name, $this->label);
+    }
+
+    /**
+     * @return \Grido\Components\Filters\Check
+     */
+    public function setFilterCheck()
+    {
+        return $this->grid->addFilterCheck($this->name, $this->label);
+    }
+
+    /**
+     * @param array $items
+     * @return \Grido\Components\Filters\Select
+     */
+    public function setFilterSelect(array $items = NULL)
+    {
+        return $this->grid->addFilterSelect($this->name, $this->label, $items);
+    }
+
+    /**
+     * @return \Grido\Components\Filters\Number
+     */
+    public function setFilterNumber()
+    {
+        return $this->grid->addFilterNumber($this->name, $this->label);
+    }
+
+    /**
+     * @param string $type see filter's constants starting at TYPE_
+     * @param mixed $optional if type is select, then this it items for select
+     * @return Filter
+     */
+    public function setFilter($type = Filter::TYPE_TEXT, $optional = NULL)
+    {
+        return $this->grid->addFilter($this->name, $this->label, $type, $optional);
     }
 
     /**********************************************************************************************/
@@ -250,8 +293,11 @@ abstract class Column extends \Grido\Components\Base
             return callback($this->customRender)->invokeArgs(array($row));
         }
 
-        $value = \Nette\Templating\Helpers::escapeHtml($this->getValue($row));
-        $value = $this->applyReplacement($value);
+        $value = $this->getValue($row);
+        if (is_string($value) || (is_object($value) && method_exists($value, '__toString'))) {
+            $value = \Nette\Templating\Helpers::escapeHtml($value);
+            $value = $this->applyReplacement($value);
+        }
 
         return $this->formatValue($value);
     }
@@ -286,7 +332,7 @@ abstract class Column extends \Grido\Components\Base
 
     protected function applyReplacement($value)
     {
-        return is_string($value) && isset($this->replacements[$value])
+        return (is_string($value) || $value == '' || $value === NULL) && isset($this->replacements[$value])
             ? str_replace(self::VALUE_IDENTIFIER, $value, $this->replacements[$value])
             : $value;
     }

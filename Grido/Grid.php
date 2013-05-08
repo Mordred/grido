@@ -109,28 +109,24 @@ class Grid extends \Nette\Application\UI\Control
     protected $hasFilters, $hasActions, $hasOperations, $hasExporting;
 
     /**
-     * Sets a model that implements the interface Grido\DataSources\IDataSource
-     * or data-source object DibiFluent, Nette\Database\Table\Selection.
+     * Sets a model that implements the interface Grido\DataSources\IDataSource or data-source object.
      * @param mixed $model
      * @throws \InvalidArgumentException
      * @return Grid
      */
     public function setModel($model)
     {
-        if ($model instanceof \DibiFluent) {
-            $model = new DataSources\DibiFluent($model);
-        } elseif ($model instanceof \Nette\Database\Table\Selection) {
-            $model = new DataSources\NetteDatabase($model);
-        } elseif (!$model instanceof DataSources\IDataSource) {
-            throw new \InvalidArgumentException('Model must be implemented \Grido\DataSources\IDataSource.');
+        if ($model instanceof DataSources\IDataSource) {
+            $this->model = $model;
+        } else {
+            $this->model = new DataSources\Model($model);
         }
 
-        $this->model = $model;
         return $this;
     }
 
     /**
-     * Sets a property accesor that implements the interface Grido\PropertyAccessors\IPropertyAccessor
+     * Sets a property accesor that implements the interface Grido\PropertyAccessors\IPropertyAccessor.
      * @param PropertyAccessors\IPropertyAccessor $propertyAccessor
      * @return Grid
      */
@@ -291,7 +287,7 @@ class Grid extends \Nette\Application\UI\Control
     public function getCount()
     {
         if ($this->count === NULL) {
-            $this->count = $this->model->call('getCount');
+            $this->count = $this->model->getCount();
         }
 
         return $this->count;
@@ -415,7 +411,7 @@ class Grid extends \Nette\Application\UI\Control
                 $this->applyPaging();
             }
 
-            $this->data = $this->model->call('getData');
+            $this->data = $this->model->getData();
 
             if ($this->onFetchData) {
                 $this->onFetchData($this);
@@ -476,7 +472,7 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * @internal
-     * @return IModel
+     * @return DataSources\IDataSource
      */
     public function getModel()
     {
@@ -661,16 +657,12 @@ class Grid extends \Nette\Application\UI\Control
             unset($actualFilter[$name]);
         }
         $conditions = $this->_applyFiltering($actualFilter);
+        $conditions[] = $filter->makeFilter($query);
 
         if ($filter->suggestsCallback) {
-            $items = callback($this->suggestsCallback)->invokeArgs(array($query, $conditions));
-
-        } elseif (method_exists($this->model, 'suggest')) {
-            $conditions[] = $filter->makeFilter($query);
-            $items = $this->model->call('suggest', key($filter->getColumns()), $conditions);
-
+            $items = callback($filter->suggestsCallback)->invokeArgs(array($query, $conditions, $this));
         } else {
-            throw new \InvalidArgumentException('Set suggest callback or implement method in model.');
+            $items = $this->model->suggest(key($filter->getColumns()), $conditions);
         }
 
         print \Nette\Utils\Json::encode($items);
@@ -803,7 +795,7 @@ class Grid extends \Nette\Application\UI\Control
     {
         $conditions = $this->_applyFiltering($this->getActualFilter());
         foreach ($conditions as $condition) {
-            $this->model->call('filter', $condition);
+            $this->model->filter($condition);
         }
     }
 
@@ -856,7 +848,7 @@ class Grid extends \Nette\Application\UI\Control
         }
 
         if ($sort) {
-            $this->model->call('sort', $sort);
+            $this->model->sort($sort);
         }
     }
 
@@ -867,7 +859,7 @@ class Grid extends \Nette\Application\UI\Control
             ->setPage($this->page);
 
         $this['form']['count']->setValue($this->getPerPage());
-        $this->model->call('limit', $paginator->getOffset(), $paginator->getLength());
+        $this->model->limit($paginator->getOffset(), $paginator->getLength());
     }
 
     /**
@@ -886,7 +878,65 @@ class Grid extends \Nette\Application\UI\Control
         }
     }
 
-    /**********************************************************************************************/
+    protected function createComponentForm()
+    {
+        $form = new \Nette\Application\UI\Form;
+        $form->setTranslator($this->getTranslator());
+        $form->setMethod(\Nette\Application\UI\Form::GET);
+
+        $buttons = $form->addContainer(self::BUTTONS);
+        $buttons->addSubmit('search', 'Search');
+        $buttons->addSubmit('reset', 'Reset');
+        $buttons->addSubmit('perPage', 'Items per page');
+
+        $form->addSelect('count', 'Count', array_combine($this->perPageList, $this->perPageList))
+            ->controlPrototype->attrs['title'] = $this->getTranslator()->translate('Items per page');
+        $form->onSuccess[] = callback($this, 'handleForm');
+
+        return $form;
+    }
+
+    /********************************* Components *************************************************/
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Columns\Text
+     */
+    public function addColumnText($name, $label)
+    {
+        return new Components\Columns\Text($this, $name, $label);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Columns\Mail
+     */
+    public function addColumnMail($name, $label)
+    {
+        return new Components\Columns\Mail($this, $name, $label);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Columns\Href
+     */
+    public function addColumnHref($name, $label)
+    {
+        return new Components\Columns\Href($this, $name, $label);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Columns\Date
+     */
+    public function addColumnDate($name, $label)
+    {
+        return new Components\Columns\Date($this, $name, $label);
+    }
 
     /**
      * @param string $name
@@ -901,7 +951,61 @@ class Grid extends \Nette\Application\UI\Control
         if (!$column instanceof Column) {
             throw new \InvalidArgumentException('Column must be inherited from \Grido\Components\Columns\Column.');
         }
+
         return $column;
+    }
+
+    /**********************************************************************************************/
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Filters\Text
+     */
+    public function addFilterText($name, $label)
+    {
+        return new Components\Filters\Text($this, $name, $label);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Filters\Date
+     */
+    public function addFilterDate($name, $label)
+    {
+        return new Components\Filters\Date($this, $name, $label);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Filters\Check
+     */
+    public function addFilterCheck($name, $label)
+    {
+        return new Components\Filters\Check($this, $name, $label);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @param array $items
+     * @return \Grido\Components\Filters\Select
+     */
+    public function addFilterSelect($name, $label, array $items = NULL)
+    {
+        return new Components\Filters\Select($this, $name, $label, $items);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Filters\Number
+     */
+    public function addFilterNumber($name, $label)
+    {
+        return new Components\Filters\Number($this, $name, $label);
     }
 
     /**
@@ -918,7 +1022,22 @@ class Grid extends \Nette\Application\UI\Control
         if (!$filter instanceof Filter) {
             throw new \InvalidArgumentException('Filter must be inherited from \Grido\Components\Filters\Filter.');
         }
+
         return $filter;
+    }
+
+    /**********************************************************************************************/
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @param string $destination
+     * @param array $args
+     * @return \Grido\Components\Actions\Href
+     */
+    public function addActionHref($name, $label, $destination = NULL, array $args = NULL)
+    {
+        return new Components\Actions\Href($this, $name, $label, $destination, $args);
     }
 
     /**
@@ -930,14 +1049,17 @@ class Grid extends \Nette\Application\UI\Control
      * @throws \InvalidArgumentException
      * @return Action
      */
-    public function addAction($name, $label, $type = Action::TYPE_HREF, $destination = NULL, $args = array())
+    public function addAction($name, $label, $type = Action::TYPE_HREF, $destination = NULL, array $args = NULL)
     {
         $action = new $type($this, $name, $label, $destination, $args);
         if (!$action instanceof Action) {
             throw new \InvalidArgumentException('Action must be inherited from \Grido\Components\Actions\Action.');
         }
+
         return $action;
     }
+
+    /**********************************************************************************************/
 
     /**
      * @param array $operations
@@ -952,6 +1074,7 @@ class Grid extends \Nette\Application\UI\Control
         if (!$operation instanceof Components\Operation) {
             throw new \InvalidArgumentException('Operation must be inherited from \Grido\Components\Operation.');
         }
+
         return $operation;
     }
 
@@ -969,23 +1092,5 @@ class Grid extends \Nette\Application\UI\Control
         }
 
         return $export;
-    }
-
-    protected function createComponentForm()
-    {
-        $form = new \Nette\Application\UI\Form;
-        $form->setTranslator($this->getTranslator());
-        $form->setMethod(\Nette\Application\UI\Form::GET);
-
-        $buttons = $form->addContainer(self::BUTTONS);
-        $buttons->addSubmit('search', 'Search');
-        $buttons->addSubmit('reset', 'Reset');
-        $buttons->addSubmit('perPage', 'Items per page');
-
-        $form->addSelect('count', 'Count', array_combine($this->perPageList, $this->perPageList))
-            ->controlPrototype->attrs['title'] = $this->getTranslator()->translate('Items per page');
-        $form->onSuccess[] = callback($this, 'handleForm');
-
-        return $form;
     }
 }

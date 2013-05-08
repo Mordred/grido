@@ -244,7 +244,6 @@ abstract class Filter extends \Grido\Components\Base
             array_unshift($condition, ' (');
             $condition[] = ' )';
             $condition = array(implode('', $condition));
-
             foreach ($values as $val) {
                 $condition[] = $val;
             }
