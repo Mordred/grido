@@ -156,9 +156,9 @@ abstract class Column extends \Grido\Components\Base
     /**
      * @return \Grido\Components\Filters\Date
      */
-    public function setFilterDate()
+    public function setFilterDate($format = 'Y-m-d')
     {
-        return $this->grid->addFilterDate($this->name, $this->label);
+        return $this->grid->addFilterDate($this->name, $this->label, $format);
     }
 
     /**

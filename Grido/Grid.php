@@ -972,9 +972,9 @@ class Grid extends \Nette\Application\UI\Control
      * @param string $label
      * @return \Grido\Components\Filters\Date
      */
-    public function addFilterDate($name, $label)
+    public function addFilterDate($name, $label, $format = 'Y-m-d')
     {
-        return new Components\Filters\Date($this, $name, $label);
+        return new Components\Filters\Date($this, $name, $label, $format);
     }
 
     /**
