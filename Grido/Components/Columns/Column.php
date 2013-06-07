@@ -39,6 +39,7 @@ abstract class Column extends \Grido\Components\Base
     const TYPE_MAIL = 'Grido\Components\Columns\Mail';
     const TYPE_HREF = 'Grido\Components\Columns\Href';
     const TYPE_DATE = 'Grido\Components\Columns\Date';
+    const TYPE_NUMBER = 'Grido\Components\Columns\Number';
 
     const ASC  = '↑';
     const DESC = '↓';
@@ -322,7 +323,10 @@ abstract class Column extends \Grido\Components\Base
     {
         $column = $this->getColumn();
         if (is_string($column)) {
-            return $this->getGrid()->getPropertyAccessor()->getProperty($row, $column);
+            if (!$this->grid->propertyAccessor->hasProperty($row, $column)) {
+                throw new \InvalidArgumentException("Column '$column' does not exist in datasource.");
+            }
+            return $this->grid->propertyAccessor->getProperty($row, $column);
         } elseif (is_callable($column)) {
             return callback($column)->invokeArgs(array($row));
         } else {

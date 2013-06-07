@@ -54,7 +54,7 @@
                     {if $column->isSortable()}
                         <a n:if="!$column->getSort()" n:href="sort! [$column->getName() => Grido\Components\Columns\Column::ASC]">{_$column->label}</a>
                         <a n:if="$column->getSort() == Grido\Components\Columns\Column::ASC" n:href="sort! [$column->getName() => Grido\Components\Columns\Column::DESC]" class="sort">{_$column->label}</a>
-                        <a n:if="$column->getSort() == Grido\Components\Columns\Column::DESC" n:href="sort! []" class="sort">{_$column->label}</a>
+                        <a n:if="$column->getSort() == Grido\Components\Columns\Column::DESC" n:href="sort! [$column->getName() => isset($control->defaultSort[$column->getName()]) ? '' : NULL]" class="sort">{_$column->label}</a>
                         <span></span>
                     {else}
                         {_$column->label}
@@ -73,7 +73,7 @@
                         {input $column->getName()}
                     {/formContainer}
                     {!$control->getFilter($column->getName())->getWrapperPrototype()->endTag()}
-                {else}
+                {elseif $column->headerPrototype->rowspan != 2}
                     <th>&nbsp;</th>
                 {/if}
             {/foreach}
@@ -119,12 +119,12 @@
                 </span>
 
                 <span n:block="count" class="count">
-                    {_'Items %d - %d of %d', $paginator->getCountBegin(), $paginator->getCountEnd(), $control->count}
+                    {= sprintf($template->translate('Items %d - %d of %d'), $paginator->getCountBegin(), $paginator->getCountEnd(), $control->count)}
                     {input count}
                     {formContainer buttons}
                         {input perPage, class => 'hide'}
                     {/formContainer}
-                    <a n:if="$control->hasExporting()" class="btn btn-mini no-ajax" n:href="export!" title="{_'Export all items'}"><i class="icon-download"></i></a>
+                    <a n:if="$control->hasExporting()" class="btn btn-mini no-ajax" href="{=$control->getComponent(Grido\Components\Export::ID)->link('export!')}" title="{_'Export all items'}"><i class="icon-download"></i></a>
                 </span>
             </td>
         </tr>

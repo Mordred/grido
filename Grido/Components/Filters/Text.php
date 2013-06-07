@@ -20,8 +20,8 @@ namespace Grido\Components\Filters;
  */
 class Text extends Filter
 {
-    /** @var callback */
-    public $suggestsCallback;
+    /** @var mixed */
+    protected $suggestionColumn;
 
     /** @var string for ->where('<column> LIKE %s', <value>) */
     protected $condition = 'LIKE %s';
@@ -31,26 +31,55 @@ class Text extends Filter
 
     /**
      * Allows suggestion.
-     * @param callback $callback
+     * @param mixed $column
      * @return Text
      */
-    public function setSuggestion($callback = NULL)
+    public function setSuggestion($column = NULL)
     {
-        $this->suggestsCallback = $callback;
+        $this->suggestionColumn = $column;
 
         $prototype = $this->getControl()->controlPrototype;
-        $prototype->class[] = 'suggest';
         $prototype->attrs['autocomplete'] = 'off';
+        $prototype->class[] = 'suggest';
 
-        $name = $this->name;
-        $this->grid->onRender[] = function(\Grido\Grid $grid) use ($prototype, $name) {
-            $prototype->attrs['data-grido-source'] = $grid->link('suggest!', $name);
+        $filter = $this;
+        $this->grid->onRender[] = function(\Grido\Grid $grid) use ($prototype, $filter) {
+            $replacement = '-query-';
+            $prototype->attrs['data-grido-suggest-replacement'] = $replacement;
+            $prototype->attrs['data-grido-suggest-handler'] = $filter->link('suggest!', array(
+                'query' => $replacement)
+            );
         };
 
         return $this;
     }
 
     /**********************************************************************************************/
+
+    /**
+     * @internal
+     * @param string $query - value from input
+     * @throws \InvalidArgumentException
+     */
+    public function handleSuggest($query)
+    {
+        if (!$this->grid->presenter->isAjax()) {
+            $this->presenter->terminate();
+        }
+
+        $actualFilter = $this->grid->getActualFilter();
+        if (isset($actualFilter[$this->name])) {
+            unset($actualFilter[$this->name]);
+        }
+        $conditions = $this->grid->_applyFiltering($actualFilter);
+        $conditions[] = $this->makeFilter($query);
+
+        $column = $this->suggestionColumn ? $this->suggestionColumn : key($this->getColumns());
+        $items = $this->grid->model->suggest($column, $conditions);
+
+        print \Nette\Utils\Json::encode($items);
+        $this->grid->presenter->terminate();
+    }
 
     /**
      * @return \Nette\Forms\Controls\TextInput

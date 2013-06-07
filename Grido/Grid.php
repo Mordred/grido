@@ -15,8 +15,8 @@ use Grido\Components\Columns\Column,
     Grido\Components\Filters\Filter,
     Grido\Components\Actions\Action,
     Grido\Components\Operation,
-    Grido\Components\Export,
-    Grido\Components\Paginator;
+    Grido\Components\Paginator,
+    Grido\Components\Export;
 
 /**
  * Grido - DataGrid for Nette Framework.
@@ -610,6 +610,7 @@ class Grid extends \Nette\Application\UI\Control
             $this->filter = array();
             $this->perPage = NULL;
             $form->setValues(array(Filter::ID => $this->defaultFilter), TRUE);
+            $this->getRememberSession()->remove();
 
         //operations handling
         } elseif ($this->hasOperations() && $form[self::BUTTONS][Operation::ID]->isSubmittedBy()) {
@@ -637,50 +638,6 @@ class Grid extends \Nette\Application\UI\Control
 
         $this->page = 1;
         $this->reload();
-    }
-
-    /**
-     * @internal
-     * @param string $name - filter name
-     * @param string $query - value from input
-     * @throws \InvalidArgumentException
-     */
-    public function handleSuggest($name, $query)
-    {
-        $filter = $this->getFilter($name, FALSE);
-        if (!$this->presenter->isAjax() || !$filter || $filter->type != Filter::TYPE_TEXT) {
-            $this->presenter->terminate();
-        }
-
-        $actualFilter = $this->getActualFilter();
-        if (isset($actualFilter[$name])) {
-            unset($actualFilter[$name]);
-        }
-        $conditions = $this->_applyFiltering($actualFilter);
-        $conditions[] = $filter->makeFilter($query);
-
-        if ($filter->suggestsCallback) {
-            $items = callback($filter->suggestsCallback)->invokeArgs(array($query, $conditions, $this));
-        } else {
-            $items = $this->model->suggest(key($filter->getColumns()), $conditions);
-        }
-
-        print \Nette\Utils\Json::encode($items);
-        $this->presenter->terminate();
-    }
-
-    /**
-     * @internal
-     * @param string $type
-     */
-    public function handleExport($type)
-    {
-        if ($export = $this->getComponent(Export::ID, FALSE)) {
-            $this->presenter->sendResponse($export);
-            $this->presenter->terminate();
-        } else {
-            trigger_error("Exporting is not allowed.", E_USER_NOTICE);
-        }
     }
 
     /**
@@ -800,10 +757,11 @@ class Grid extends \Nette\Application\UI\Control
     }
 
     /**
+     * @internal
      * @param array $filter
      * @return array
      */
-    protected function _applyFiltering(array $filter)
+    public function _applyFiltering(array $filter)
     {
         $conditions = array();
         if ($filter && $this->hasFilters()) {
@@ -840,6 +798,12 @@ class Grid extends \Nette\Application\UI\Control
                 trigger_error("Column with name '$column' is not sortable.", E_USER_NOTICE);
                 break;
             } elseif (!in_array($dir, array(Column::ASC, Column::DESC))) {
+
+                if ($dir == '' && isset($this->defaultSort[$column])) {
+                    unset($this->sort[$column]);
+                    break;
+                }
+
                 trigger_error("Dir '$dir' is not allowed.", E_USER_NOTICE);
                 break;
             }
@@ -931,11 +895,25 @@ class Grid extends \Nette\Application\UI\Control
     /**
      * @param string $name
      * @param string $label
+     * @param string $dateFormat
      * @return \Grido\Components\Columns\Date
      */
-    public function addColumnDate($name, $label)
+    public function addColumnDate($name, $label, $dateFormat = NULL)
     {
-        return new Components\Columns\Date($this, $name, $label);
+        return new Components\Columns\Date($this, $name, $label, $dateFormat);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @param int $decimals number of decimal points
+     * @param string $decPoint separator for the decimal point
+     * @param string $thousandsSep thousands separator
+     * @return \Grido\Components\Columns\Number
+     */
+    public function addColumnNumber($name, $label, $decimals = NULL, $decPoint = NULL, $thousandsSep = NULL)
+    {
+        return new Components\Columns\Number($this, $name, $label, $decimals, $decPoint, $thousandsSep);
     }
 
     /**
