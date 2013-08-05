@@ -18,9 +18,9 @@ namespace Grido\DataSources;
  * @subpackage  DataSources
  * @author      Petr Bugyík
  *
+ * @property-read \Nette\Database\Table\Selection $selection
  * @property-read int $count
  * @property-read array $data
- * @property-read \Nette\Database\Table\Selection $selection
  */
 class NetteDatabase extends \Nette\Object implements IDataSource
 {
@@ -54,19 +54,19 @@ class NetteDatabase extends \Nette\Object implements IDataSource
     /*********************************** interface IDataSource ************************************/
 
     /**
-     * @return array
-     */
-    public function getData()
-    {
-        return $this->selection;
-    }
-
-    /**
      * @return int
      */
     public function getCount()
     {
         return $this->selection->count('*');
+    }
+
+    /**
+     * @return array
+     */
+    public function getData()
+    {
+        return $this->selection;
     }
 
     /**
@@ -111,13 +111,15 @@ class NetteDatabase extends \Nette\Object implements IDataSource
         $items = array();
         if (is_callable($column)) {
             foreach ($selection as $item) {
-                $value = $column($item);
-                $items[$value] = $value;
+                $items[] = (string) $column($item);
             }
         } else {
-            $items = $selection->fetchPairs($column, $column);
+            $data = $selection->fetchPairs($column, $column);
+            foreach ($data as $value) {
+                $items[] = (string) $value;
+            }
         }
 
-        return array_keys($items);
+        return $items;
     }
 }

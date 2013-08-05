@@ -17,6 +17,9 @@ namespace Grido\DataSources;
  * @package     Grido
  * @subpackage  DataSources
  * @author      Josef Kříž <pepakriz@gmail.com>
+ *
+ * @property-read array $data
+ * @property-read int $count
  */
 class ArraySource extends \Nette\Object implements IDataSource
 {
@@ -34,19 +37,16 @@ class ArraySource extends \Nette\Object implements IDataSource
     protected function formatFilterCondition(array $condition)
     {
         $matches = \Nette\Utils\Strings::matchAll($condition[0], '/\[([\w_-]+)\]* ([\w\!<>=]+) ([%\w]+)/');
-        $column = NULL;
 
-        if ($matches) {
-            foreach ($matches as $match) {
-                return array(
-                    $match[1],
-                    $match[2],
-                    trim(str_replace(array('%s', '%i', '%f'), '?', $match[3])),
-                );
-            }
-        } else {
+        if (!$matches) {
             return $condition;
         }
+
+        return array(
+            $matches[0][1],
+            $matches[0][2],
+            trim(str_replace(array('%s', '%i', '%f'), '?', $matches[0][3]))
+        );
     }
 
     /**
@@ -61,10 +61,9 @@ class ArraySource extends \Nette\Object implements IDataSource
 
         return array_filter($data, function ($row) use ($value, $condition) {
             if ($condition[1] === 'LIKE') {
-                if (strlen($value) <= 2) {
-                    return TRUE;
-                }
-                return stripos($row[$condition[0]], substr($value, 1, -1)) !== FALSE;
+                return strlen($value) <= 2
+                    ? TRUE
+                    : stripos($row[$condition[0]], substr($value, 1, -1)) !== FALSE;
 
             } else if ($condition[1] === '=') {
                 return $row[$condition[0]] == $value;
@@ -74,7 +73,6 @@ class ArraySource extends \Nette\Object implements IDataSource
 
             } elseif (in_array($condition[1], array('<', '<=', '>', '>='))) {
                 return eval("return {$row[$condition[0]]}{$condition[1]}{$value};");
-
             }
         });
     }
@@ -82,19 +80,19 @@ class ArraySource extends \Nette\Object implements IDataSource
     /*********************************** interface IDataSource ************************************/
 
     /**
-     * @return array
-     */
-    public function getData()
-    {
-        return $this->data;
-    }
-
-    /**
      * @return int
      */
     public function getCount()
     {
         return count($this->data);
+    }
+
+    /**
+     * @return array
+     */
+    public function getData()
+    {
+        return $this->data;
     }
 
     /**
@@ -151,16 +149,15 @@ class ArraySource extends \Nette\Object implements IDataSource
     public function suggest($column, array $conditions)
     {
         $data = $this->data;
-
         foreach ($conditions as $condition) {
             $data = $this->getFilter($data, $condition);
         }
 
-        $suggestions = array();
+        $items = array();
         foreach ($data as $row) {
-            $suggestions[] = (string)$row[$column];
+            $items[] = (string) $row[$column];
         }
 
-        return $suggestions;
+        return $items;
     }
 }

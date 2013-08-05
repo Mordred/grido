@@ -27,6 +27,7 @@ use Grido\Components\Columns\Column,
  * @property-read int $count
  * @property-read mixed $data
  * @property-read callback $rowCallback
+ * @property-read \Nette\Utils\Html $tablePrototype
  * @property-write bool $rememberState
  * @property-write array $defaultPerPage
  * @property-write string $templateFile
@@ -65,6 +66,9 @@ class Grid extends \Nette\Application\UI\Control
 
     /** @var callback $rowCallback - callback returns tr html element; function($row, Html $tr) */
     protected $rowCallback;
+
+    /** @var \Nette\Utils\Html */
+    protected $tablePrototype;
 
     /** @var bool  */
     protected $rememberState = FALSE;
@@ -111,16 +115,15 @@ class Grid extends \Nette\Application\UI\Control
     /**
      * Sets a model that implements the interface Grido\DataSources\IDataSource or data-source object.
      * @param mixed $model
+     * @param bool $forceWrapper
      * @throws \InvalidArgumentException
      * @return Grid
      */
-    public function setModel($model)
+    public function setModel($model, $forceWrapper = FALSE)
     {
-        if ($model instanceof DataSources\IDataSource) {
-            $this->model = $model;
-        } else {
-            $this->model = new DataSources\Model($model);
-        }
+        $this->model = $model instanceof DataSources\IDataSource && $forceWrapper === FALSE
+            ? $model
+            : new DataSources\Model($model);
 
         return $this;
     }
@@ -190,6 +193,10 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function setPerPageList(array $perPageList)
     {
+        if ($this->hasFilters(FALSE) || $this->hasOperations(FALSE)) {
+            trigger_error("This call may not be relevant after setting some filters or operations.", E_USER_NOTICE);
+        }
+
         $this->perPageList = $perPageList;
         return $this;
     }
@@ -278,6 +285,17 @@ class Grid extends \Nette\Application\UI\Control
         return $this;
     }
 
+    /**
+     * Sets client-side options.
+     * @param array $options
+     * @return \Grido\Grid
+     */
+    public function setClientSideOptions(array $options)
+    {
+        $this->getTablePrototype()->data['grido-options'] = json_encode($options);
+        return $this;
+    }
+
     /**********************************************************************************************/
 
     /**
@@ -335,7 +353,16 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function getPerPage()
     {
-        return $this->perPage === NULL ? $this->defaultPerPage : $this->perPage;
+        $perPage = $this->perPage === NULL
+            ? $this->defaultPerPage
+            : $this->perPage;
+
+        if ($perPage !== NULL && !in_array($perPage, $this->perPageList)) {
+            trigger_error("Items per page is out of range.", E_USER_NOTICE);
+            $perPage = $this->defaultPerPage;
+        }
+
+        return $perPage;
     }
 
     /**
@@ -413,6 +440,11 @@ class Grid extends \Nette\Application\UI\Control
 
             $this->data = $this->model->getData();
 
+            if ($this->data && !in_array($this->page, range(1, $this->getPaginator()->pageCount))) {
+                trigger_error("Page is out of range.", E_USER_NOTICE);
+                $this->page = 1;
+            }
+
             if ($this->onFetchData) {
                 $this->onFetchData($this);
             }
@@ -444,6 +476,21 @@ class Grid extends \Nette\Application\UI\Control
     }
 
     /**
+     * Returns table html element of grid.
+     * @return \Nette\Utils\Html
+     */
+    public function getTablePrototype()
+    {
+        if ($this->tablePrototype === NULL) {
+            $this->tablePrototype = \Nette\Utils\Html::el('table')
+                ->id($this->name)
+                ->class('grido');
+        }
+
+        return $this->tablePrototype;
+    }
+
+    /**
      * @internal
      * @return string
      */
@@ -453,10 +500,10 @@ class Grid extends \Nette\Application\UI\Control
             return $this->filterRenderType;
         }
 
-        if ($this->hasFilters()) {
-            $this->filterRenderType = $this->hasActions()
-                ? Filter::RENDER_INNER
-                : Filter::RENDER_OUTER;
+        $this->filterRenderType = Filter::RENDER_OUTER;
+
+        if ($this->hasFilters() && $this->hasActions()) {
+            $this->filterRenderType = Filter::RENDER_INNER;
 
             $filters = $this[Filter::ID]->getComponents();
             foreach ($filters as $filter) {
@@ -527,33 +574,19 @@ class Grid extends \Nette\Application\UI\Control
      /**
       * Loads state informations.
       * @internal
-      * @param array
-      * @return void
+      * @param array $params
       */
     public function loadState(array $params)
     {
-        $this->loadRememberState($params);
-
-        parent::loadState($params);
-
-        if($this->perPage !== NULL && !in_array($this->perPage, $this->perPageList)) {
-            $this->perPage = NULL;
-            $this->reload();
-        }
-    }
-
-    /**
-     * Loads state informations from session.
-     * @param array $params
-     */
-    protected function loadRememberState(array &$params)
-    {
+        //loads state from session
         $session = $this->getRememberSession();
         if ($this->presenter->isSignalReceiver($this)) {
             $session->remove();
         } elseif (!$params && $session->params) {
             $params = (array) $session->params;
         }
+
+        parent::loadState($params);
     }
 
     /**
@@ -586,54 +619,17 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * @internal
-     * @param \Nette\Application\UI\Form $form
+     * @param \Nette\Forms\Controls\SubmitButton $button
      */
-    public function handleForm(\Nette\Application\UI\Form $form)
+    public function handleFilter(\Nette\Forms\Controls\SubmitButton $button)
     {
-        //filter handling
-        if ($form[self::BUTTONS]['search']->isSubmittedBy()) {
-            $values = $form->values;
-            foreach ($values[Filter::ID] as $name => $value) {
-                $filter = $this->getFilter($name);
-                $clearDefault = isset($this->defaultFilter[$name]);
-
-                if ($value != '' || $clearDefault) {
-                    $this->filter[$name] = $filter->changeValue($value);
-                } elseif (isset($this->filter[$name])) {
-                    unset($this->filter[$name]);
-                }
+        $values = $button->form->values[Filter::ID];
+        foreach ($values as $name => $value) {
+            if ($value != '' || isset($this->defaultFilter[$name])) {
+                $this->filter[$name] = $this->getFilter($name)->changeValue($value);
+            } elseif (isset($this->filter[$name])) {
+                unset($this->filter[$name]);
             }
-
-        //reset button handling
-        } elseif ($form[self::BUTTONS]['reset']->isSubmittedBy()) {
-            $this->sort = array();
-            $this->filter = array();
-            $this->perPage = NULL;
-            $form->setValues(array(Filter::ID => $this->defaultFilter), TRUE);
-            $this->getRememberSession()->remove();
-
-        //operations handling
-        } elseif ($this->hasOperations() && $form[self::BUTTONS][Operation::ID]->isSubmittedBy()) {
-            $this->addCheckers($this->getData());
-
-            $values = $form[Operation::ID]->values;
-            if (empty($values[Operation::ID])) {
-                $this->reload();
-            }
-            $ids = array();
-            $operation = $values[Operation::ID];
-            unset($values[Operation::ID]);
-            foreach ($values as $key => $val) {
-                if ($val) {
-                    $ids[] = $key;
-                }
-            }
-            $this[Operation::ID]->onSubmit($operation, $ids);
-
-        //change items per page handling
-        } elseif ($form[self::BUTTONS]['perPage']->isSubmittedBy()) {
-            $perPage = (int) $form['count']->value;
-            $this->perPage = $perPage == $this->defaultPerPage ? NULL : $perPage;
         }
 
         $this->page = 1;
@@ -641,10 +637,42 @@ class Grid extends \Nette\Application\UI\Control
     }
 
     /**
+     * @internal
+     * @param \Nette\Forms\Controls\SubmitButton $button
+     */
+    public function handleReset(\Nette\Forms\Controls\SubmitButton $button)
+    {
+        $this->sort = array();
+        $this->perPage = NULL;
+        $this->filter = array();
+        $this->getRememberSession()->remove();
+        $button->form->setValues(array(Filter::ID => $this->defaultFilter), TRUE);
+
+        $this->page = 1;
+        $this->reload();
+    }
+
+    /**
+     * @internal
+     * @param \Nette\Forms\Controls\SubmitButton $button
+     */
+    public function handlePerPage(\Nette\Forms\Controls\SubmitButton $button)
+    {
+        $perPage = (int) $button->form['count']->value;
+        $this->perPage = $perPage == $this->defaultPerPage
+            ? NULL
+            : $perPage;
+
+        $this->page = 1;
+        $this->reload();
+    }
+
+    /**
      * Refresh wrapper.
+     * @internal
      * @return void
      */
-    protected function reload()
+    public function reload()
     {
         if ($this->presenter->isAjax()) {
             $this->invalidateControl();
@@ -657,56 +685,72 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * @internal
+     * @param bool $useCache
      * @return bool
      */
-    public function hasActions()
+    public function hasFilters($useCache = TRUE)
     {
-        if ($this->hasActions === NULL) {
-            $container = $this->getComponent(Action::ID, FALSE);
-            $this->hasActions = $container && count($container->getComponents()) > 0;
-        }
+        $hasFilters = $this->hasFilters;
 
-        return $this->hasActions;
-    }
-
-    /**
-     * @internal
-     * @return bool
-     */
-    public function hasFilters()
-    {
-        if ($this->hasFilters === NULL) {
+        if ($hasFilters === NULL || $useCache === FALSE) {
             $container = $this->getComponent(Filter::ID, FALSE);
-            $this->hasFilters = $container && count($container->getComponents()) > 0;
+            $hasFilters = $container && count($container->getComponents()) > 0;
+            $this->hasFilters = $useCache ? $hasFilters : NULL;
         }
 
-        return $this->hasFilters;
+        return $hasFilters;
     }
 
     /**
      * @internal
+     * @param bool $useCache
      * @return bool
      */
-    public function hasOperations()
+    public function hasActions($useCache = TRUE)
     {
-        if ($this->hasOperations === NULL) {
-            $this->hasOperations = $this->getComponent(Operation::ID, FALSE);
+        $hasActions = $this->hasActions;
+
+        if ($hasActions === NULL || $useCache === FALSE) {
+            $container = $this->getComponent(Action::ID, FALSE);
+            $hasActions= $container && count($container->getComponents()) > 0;
+            $this->hasActions = $useCache ? $hasActions : NULL;
         }
 
-        return $this->hasOperations;
+        return $hasActions;
     }
 
     /**
      * @internal
+     * @param bool $useCache
      * @return bool
      */
-    public function hasExporting()
+    public function hasOperations($useCache = TRUE)
     {
-        if ($this->hasExporting === NULL) {
-            $this->hasExporting = $this->getComponent(Export::ID, FALSE);
+        $hasOperations = $this->hasOperations;
+
+        if ($hasOperations === NULL || $useCache === FALSE) {
+            $hasOperations = $this->getComponent(Operation::ID, FALSE);
+            $this->hasOperations = $useCache ? $hasOperations : NULL;
         }
 
-        return $this->hasExporting;
+        return $hasOperations;
+    }
+
+    /**
+     * @internal
+     * @param bool $useCache
+     * @return bool
+     */
+    public function hasExporting($useCache = TRUE)
+    {
+        $hasExporting = $this->hasExporting;
+
+        if ($hasExporting === NULL || $useCache === FALSE) {
+            $hasExporting = $this->getComponent(Export::ID, FALSE);
+            $this->hasExporting = $useCache ? $hasExporting : NULL;
+        }
+
+        return $hasExporting;
     }
 
     /**********************************************************************************************/
@@ -721,6 +765,7 @@ class Grid extends \Nette\Application\UI\Control
         $template = parent::createTemplate($class);
         $template->setFile(__DIR__ . '/Grid.latte');
         $template->registerHelper('translate', callback($this->getTranslator(), 'translate'));
+
         return $template;
     }
 
@@ -729,14 +774,13 @@ class Grid extends \Nette\Application\UI\Control
      */
     public function render()
     {
+        $this->saveRememberState();
         $data = $this->getData();
-        $this->addCheckers($data);
 
         $this->template->paginator = $this->paginator;
         $this->template->data = $data;
 
         $this->onRender($this);
-        $this->saveRememberState();
         $this->template->render();
     }
 
@@ -826,38 +870,22 @@ class Grid extends \Nette\Application\UI\Control
         $this->model->limit($paginator->getOffset(), $paginator->getLength());
     }
 
-    /**
-     * @param array $data
-     */
-    protected function addCheckers($data)
+    protected function createComponentForm($name)
     {
-        if ($this->hasOperations()) {
-            $operation = $this['form'][Operation::ID];
-            if (count($operation->getComponents()) == 1) {
-                $pk = $this[Operation::ID]->getPrimaryKey();
-                foreach ($data as $item) {
-                    $operation->addCheckbox($this->getPropertyAccessor()->getProperty($item, $pk));
-                }
-            }
-        }
-    }
-
-    protected function createComponentForm()
-    {
-        $form = new \Nette\Application\UI\Form;
+        $form = new \Nette\Application\UI\Form($this, $name);
         $form->setTranslator($this->getTranslator());
-        $form->setMethod(\Nette\Application\UI\Form::GET);
+        $form->setMethod($form::GET);
 
         $buttons = $form->addContainer(self::BUTTONS);
-        $buttons->addSubmit('search', 'Search');
-        $buttons->addSubmit('reset', 'Reset');
-        $buttons->addSubmit('perPage', 'Items per page');
+        $buttons->addSubmit('search', 'Search')
+            ->onClick[] = $this->handleFilter;
+        $buttons->addSubmit('reset', 'Reset')
+            ->onClick[] = $this->handleReset;
+        $buttons->addSubmit('perPage', 'Items per page')
+            ->onClick[] = $this->handlePerPage;
 
         $form->addSelect('count', 'Count', array_combine($this->perPageList, $this->perPageList))
             ->controlPrototype->attrs['title'] = $this->getTranslator()->translate('Items per page');
-        $form->onSuccess[] = callback($this, 'handleForm');
-
-        return $form;
     }
 
     /********************************* Components *************************************************/
@@ -988,13 +1016,23 @@ class Grid extends \Nette\Application\UI\Control
 
     /**
      * @param string $name
+     * @param \Nette\Forms\IControl $formControl
+     * @return \Grido\Components\Filters\Custom
+     */
+    public function addFilterCustom($name, \Nette\Forms\IControl $formControl)
+    {
+        return new Components\Filters\Custom($this, $name, NULL, $formControl);
+    }
+
+    /**
+     * @param string $name
      * @param string $label
      * @param string $type starting constants with Filter::TYPE_
-     * @param mixed $optional if type is select, then this it items for select
+     * @param mixed $optional if type is select, then this is items for select
      * @throws \InvalidArgumentException
      * @return Filter
      */
-    public function addFilter($name, $label, $type = Filter::TYPE_TEXT, $optional = NULL)
+    public function addFilter($name, $label = NULL, $type = Filter::TYPE_TEXT, $optional = NULL)
     {
         $filter = new $type($this, $name, $label, $optional);
         if (!$filter instanceof Filter) {
@@ -1016,6 +1054,16 @@ class Grid extends \Nette\Application\UI\Control
     public function addActionHref($name, $label, $destination = NULL, array $args = NULL)
     {
         return new Components\Actions\Href($this, $name, $label, $destination, $args);
+    }
+
+    /**
+     * @param string $name
+     * @param string $label
+     * @return \Grido\Components\Actions\Event
+     */
+    public function addActionEvent($name, $label)
+    {
+        return new Components\Actions\Event($this, $name, $label);
     }
 
     /**

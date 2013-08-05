@@ -34,6 +34,7 @@ abstract class Filter extends \Grido\Components\Base
     const TYPE_CHECK = 'Grido\Components\Filters\Check';
     const TYPE_SELECT = 'Grido\Components\Filters\Select';
     const TYPE_NUMBER = 'Grido\Components\Filters\Number';
+    const TYPE_CUSTOM = 'Grido\Components\Filters\Custom';
 
     const OPERATOR_AND  = 'AND';
     const OPERATOR_OR   = 'OR';
@@ -69,9 +70,8 @@ abstract class Filter extends \Grido\Components\Base
      * @param \Grido\Grid $grid
      * @param string $name
      * @param string $label
-     * @param mixed $optional - if TYPE_SELECT then this it items for select
      */
-    public function __construct($grid, $name, $label, $optional = NULL)
+    public function __construct($grid, $name, $label)
     {
         $this->addComponentToGrid($grid, $name);
 
@@ -153,7 +153,12 @@ abstract class Filter extends \Grido\Components\Base
     public function getColumns()
     {
         if (!$this->columns) {
-            $this->setColumn($this->name);
+            $column = $this->name;
+            if ($column = $this->grid->getColumn($this->name, FALSE)) {
+                $column = $column->column; //use db column from column compoment
+            }
+
+            $this->setColumn($column);
         }
 
         return $this->columns;
